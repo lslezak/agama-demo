@@ -97,7 +97,7 @@ async function api(url: string, token: string): Promise<any> {
             process.stderr.write(
               `HTTP code ${res.statusCode}, response: ${chunks.join("")}\n`
             );
-          reject("Download failed: " + chunks.join(""));
+          reject("Download failed");
         } else {
           if (res.headers["content-type"] === "application/json") {
             const data = JSON.parse(chunks.join(""));
@@ -118,10 +118,71 @@ async function api(url: string, token: string): Promise<any> {
   });
 }
 
+// special handling for paths with parameters
+async function specialPaths(data: any, url: string, token: string) {
+  const connectionPath = "/api/network/connections";
+  const networkConnections = data[connectionPath];
+
+  if (networkConnections) {
+    for (const idx in networkConnections) {
+      if (networkConnections[idx].id) {
+        const path = connectionPath + "/" + networkConnections[idx].id;
+        process.stderr.write(`Downloading ${path}\n`);
+        const res = await api(url + path, token);
+        data[path] = res;
+      }
+    }
+  }
+
+  const storageParamsPath = "/api/storage/product/params";
+  const storageParams = data[storageParamsPath];
+
+  if (storageParams && storageParams.mountPoints) {
+    const volumePath = "/api/storage/product/volume_for";
+    const mountPoints = storageParams.mountPoints;
+
+    // FIXME: the web UI additionally queries empty path, is that OK?
+    mountPoints.push("");
+    for (const idx in mountPoints) {
+      const path =
+        volumePath + "?mount_path=" + encodeURIComponent(mountPoints[idx]);
+      process.stderr.write(`Downloading ${path}\n`);
+      const res = await api(url + path, token);
+      data[path] = res;
+    }
+  }
+}
+
+// ignore these paths
+const skip = [
+  // FIXME: returns error 404, invalid OpenAPI?
+  "/api/product/issues/product",
+  // needs "id" parameter
+  "/api/network/connections/:id",
+  // needs "mount_path" query parameter
+  "/api/storage/product/volume_for",
+];
+
+async function supported(
+  url: string,
+  storage: string,
+  token: string,
+  data: object
+): Promise<boolean> {
+  const path = `/api/storage/${storage}/supported`;
+  const supported = await api(url + path, token);
+  data[path] = supported;
+  return supported;
+}
+
 async function readOpenAPI(dir: string, url: string, password: string) {
   const token = await login(url, password);
   const files = globSync("*.json", { cwd: dir });
   const data = {};
+
+  // check if ZFCP and DASD devices are supported (S390 mainframe only)
+  const zfcp = await supported(url, "zfcp", token, data);
+  const dasd = await supported(url, "dasd", token, data);
 
   for (const idx in files) {
     const fullPath = path.join(dir, files[idx]);
@@ -130,25 +191,22 @@ async function readOpenAPI(dir: string, url: string, password: string) {
     for (const name in paths) {
       if (paths[name].get) {
         const params = paths[name].get.parameters;
-        if (params && params.filter((p: any) => p.required).length > 0) {
+        if (
+          skip.includes(name) ||
+          (!zfcp && name.match(/zfcp/)) ||
+          (!dasd && name.match(/dasd/))
+        ) {
           process.stderr.write(`Skipping ${name}\n`);
         } else {
           process.stderr.write(`Downloading ${name}\n`);
-          try {
-            const res = await api(url + name, token);
-            data[name] = res;
-          } catch (error) {
-            // ignore zfcp endpoint errors
-            // if (name.match(/zfcp/)) {
-            //   console.log(`Ignoring ${name} error`);
-            // } else {
-            //   throw error;
-            // }
-          }
+          const res = await api(url + name, token);
+          data[name] = res;
         }
       }
     }
   }
+
+  await specialPaths(data, url, token);
 
   // pretty print with 2 spaces indentation
   const result = JSON.stringify(data, null, 2);
