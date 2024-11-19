@@ -33,6 +33,12 @@ if (!options.password) {
   );
 }
 
+// print a warning on stderr
+function warn(msg: string) {
+  process.stderr.write(msg);
+  process.stderr.write("\n");
+}
+
 // helper function, login to Agama, resolves to the Agama authentication token
 async function login(url: string, password: string): Promise<string> {
   const downloader = url.startsWith("https://") ? https : http;
@@ -94,18 +100,14 @@ async function api(url: string, token: string): Promise<any> {
       res.on("end", () => {
         if (res.statusCode !== 200) {
           if (options.debug)
-            process.stderr.write(
-              `HTTP code ${res.statusCode}, response: ${chunks.join("")}\n`
-            );
+            warn(`HTTP code ${res.statusCode}, response: ${chunks.join("")}`);
           reject("Download failed");
         } else {
           if (res.headers["content-type"] === "application/json") {
             const data = JSON.parse(chunks.join(""));
             resolve(data);
           } else {
-            process.stderr.write(
-              `Ignoring ${res.headers["content-type"]} content\n`
-            );
+            warn(`Ignoring ${res.headers["content-type"]} content`);
             resolve(null);
           }
         }
@@ -127,7 +129,7 @@ async function specialPaths(data: any, url: string, token: string) {
     for (const idx in networkConnections) {
       if (networkConnections[idx].id) {
         const path = connectionPath + "/" + networkConnections[idx].id;
-        process.stderr.write(`Downloading ${path}\n`);
+        warn(`Downloading ${path}`);
         const res = await api(url + path, token);
         data[path] = res;
       }
@@ -146,10 +148,19 @@ async function specialPaths(data: any, url: string, token: string) {
     for (const idx in mountPoints) {
       const path =
         volumePath + "?mount_path=" + encodeURIComponent(mountPoints[idx]);
-      process.stderr.write(`Downloading ${path}\n`);
+      warn(`Downloading ${path}`);
       const res = await api(url + path, token);
       data[path] = res;
     }
+  }
+}
+
+function sanityCheck(data: object) {
+  const config = data["/api/software/config"];
+  if (!config.product) {
+    warn(
+      "WARNING: No product is selected, some settings (storage, software) depend on selected product."
+    );
   }
 }
 
@@ -196,9 +207,9 @@ async function readOpenAPI(dir: string, url: string, password: string) {
           (!zfcp && name.match(/zfcp/)) ||
           (!dasd && name.match(/dasd/))
         ) {
-          process.stderr.write(`Skipping ${name}\n`);
+          warn(`Skipping ${name}`);
         } else {
-          process.stderr.write(`Downloading ${name}\n`);
+          warn(`Downloading ${name}`);
           const res = await api(url + name, token);
           data[name] = res;
         }
@@ -216,6 +227,8 @@ async function readOpenAPI(dir: string, url: string, password: string) {
   } else {
     console.log(result);
   }
+
+  sanityCheck(data);
 }
 
 // await cannot be used at the top level, define an anonymous async function and execute it
@@ -223,8 +236,7 @@ async function readOpenAPI(dir: string, url: string, password: string) {
   try {
     await readOpenAPI(options.api, options.url, options.password);
   } catch (error) {
-    process.stderr.write(error);
-    process.stderr.write("\n");
+    warn(error);
     if (options.debug) {
       // print debug backtrace
       throw new Error("Agama dump failed", { cause: error });
