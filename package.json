@@ -7,13 +7,15 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "format": "prettier --write src"
+    "format": "prettier --write src",
+    "clean": "rm -rf dist/*"
   },
   "files": [
     "dist"
   ],
   "bin": {
-    "agama-dump": "./dist/agama-dump.js"
+    "agama-dump": "./dist/agama-dump.js",
+    "agama-vm": "./dist/agama-vm.js"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
