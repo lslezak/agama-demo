@@ -23,14 +23,11 @@ const options = program.opts();
 
 // read the password from terminal if not specified from command line
 if (!options.password) {
-  options.password = question(
-    `Enter login password for Agama at ${options.url}: `,
-    {
-      // do not print the entered password in the terminal
-      hideEchoBack: true,
-      mask: "",
-    }
-  );
+  options.password = question(`Enter login password for Agama at ${options.url}: `, {
+    // do not print the entered password in the terminal
+    hideEchoBack: true,
+    mask: "",
+  });
 }
 
 // print a warning on stderr
@@ -99,8 +96,7 @@ async function api(url: string, token: string): Promise<any> {
       });
       res.on("end", () => {
         if (res.statusCode !== 200) {
-          if (options.debug)
-            warn(`HTTP code ${res.statusCode}, response: ${chunks.join("")}`);
+          if (options.debug) warn(`HTTP code ${res.statusCode}, response: ${chunks.join("")}`);
           reject("Download failed");
         } else {
           if (res.headers["content-type"] === "application/json") {
@@ -146,8 +142,7 @@ async function specialPaths(data: any, url: string, token: string) {
     // FIXME: the web UI additionally queries empty path, is that OK?
     mountPoints.push("");
     for (const idx in mountPoints) {
-      const path =
-        volumePath + "?mount_path=" + encodeURIComponent(mountPoints[idx]);
+      const path = volumePath + "?mount_path=" + encodeURIComponent(mountPoints[idx]);
       warn(`Downloading ${path}`);
       const res = await api(url + path, token);
       data[path] = res;
@@ -202,11 +197,7 @@ async function readOpenAPI(dir: string, url: string, password: string) {
     for (const name in paths) {
       if (paths[name].get) {
         const params = paths[name].get.parameters;
-        if (
-          skip.includes(name) ||
-          (!zfcp && name.match(/zfcp/)) ||
-          (!dasd && name.match(/dasd/))
-        ) {
+        if (skip.includes(name) || (!zfcp && name.match(/zfcp/)) || (!dasd && name.match(/dasd/))) {
           warn(`Skipping ${name}`);
         } else {
           warn(`Downloading ${name}`);
