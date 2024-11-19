@@ -1,3 +1,5 @@
+#! /usr/bin/env node
+
 import path from "node:path";
 import fs from "node:fs";
 import http from "node:http";
@@ -11,7 +13,7 @@ import { question } from "readline-sync";
 
 // define command line arguments
 program
-  .description("Dump Agama REST API data")
+  .description("Dump the current Agama REST API data")
   .requiredOption("-a, --api <dir>", "Agama OpenAPI specification")
   .option("-d, --debug", "Enable debugging")
   .option("-u, --url <url>", "Agama server URL", "http://localhost")
@@ -51,7 +53,7 @@ async function login(url: string, password: string): Promise<string> {
   };
 
   return new Promise((resolve, reject) => {
-    const chunks = [];
+    const chunks: any[] = [];
     const req = downloader.request(url + "/api/auth", options, (res) => {
       res.setEncoding("utf8");
       res.on("data", (chunk) => {
@@ -88,7 +90,7 @@ async function api(url: string, token: string): Promise<any> {
   };
 
   return new Promise((resolve, reject) => {
-    const chunks = [];
+    const chunks: any[] = [];
     const req = downloader.get(url, httpOptions, (res) => {
       res.setEncoding("utf8");
       res.on("data", (chunk) => {
@@ -139,7 +141,7 @@ async function specialPaths(data: any, url: string, token: string) {
     const volumePath = "/api/storage/product/volume_for";
     const mountPoints = storageParams.mountPoints;
 
-    // FIXME: the web UI additionally queries empty path, is that OK?
+    // FIXME: the web UI additionally queries the empty path, is that OK?
     mountPoints.push("");
     for (const idx in mountPoints) {
       const path = volumePath + "?mount_path=" + encodeURIComponent(mountPoints[idx]);
@@ -150,7 +152,7 @@ async function specialPaths(data: any, url: string, token: string) {
   }
 }
 
-function sanityCheck(data: object) {
+function sanityCheck(data: any) {
   const config = data["/api/software/config"];
   if (!config.product) {
     warn(
@@ -169,12 +171,7 @@ const skip = [
   "/api/storage/product/volume_for",
 ];
 
-async function supported(
-  url: string,
-  storage: string,
-  token: string,
-  data: object
-): Promise<boolean> {
+async function supported(url: string, storage: string, token: string, data: any): Promise<boolean> {
   const path = `/api/storage/${storage}/supported`;
   const supported = await api(url + path, token);
   data[path] = supported;
@@ -184,7 +181,7 @@ async function supported(
 async function readOpenAPI(dir: string, url: string, password: string) {
   const token = await login(url, password);
   const files = globSync("*.json", { cwd: dir });
-  const data = {};
+  const data: any = {};
 
   // check if ZFCP and DASD devices are supported (S390 mainframe only)
   const zfcp = await supported(url, "zfcp", token, data);
@@ -196,12 +193,11 @@ async function readOpenAPI(dir: string, url: string, password: string) {
     const paths = apiData.paths || {};
     for (const name in paths) {
       if (paths[name].get) {
-        const params = paths[name].get.parameters;
         if (skip.includes(name) || (!zfcp && name.match(/zfcp/)) || (!dasd && name.match(/dasd/))) {
           warn(`Skipping ${name}`);
         } else {
           warn(`Downloading ${name}`);
-          const res = await api(url + name, token);
+          const res = await api(url + name.replace(/\/$/, ""), token);
           data[name] = res;
         }
       }
@@ -227,7 +223,7 @@ async function readOpenAPI(dir: string, url: string, password: string) {
   try {
     await readOpenAPI(options.api, options.url, options.password);
   } catch (error) {
-    warn(error);
+    warn(String(error));
     if (options.debug) {
       // print debug backtrace
       throw new Error("Agama dump failed", { cause: error });
