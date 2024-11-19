@@ -13,7 +13,7 @@
     "dist"
   ],
   "bin": {
-    "agama_dump": "./dist/agama_dump.js"
+    "agama-dump": "./dist/agama-dump.js"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
