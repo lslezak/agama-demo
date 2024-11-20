@@ -185,6 +185,7 @@ const localized = [
   "/api/software/products",
   "/api/storage/devices/result",
   "/api/storage/proposal/actions",
+  "/api/users/issues",
 ];
 
 async function supported(url: string, storage: string, token: string, data: any): Promise<boolean> {
@@ -199,7 +200,7 @@ async function apiDownload(
   path: string,
   token: string,
   data: any,
-  language: string | undefined = undefined
+  language?: string
 ) {
   warn(`Downloading ${path}`);
   // remove trailing slash from path
@@ -288,7 +289,12 @@ async function readOpenAPI(dir: string, url: string, password: string) {
     const paths = apiData.paths || {};
     for (const name in paths) {
       if (paths[name].get) {
-        if (skip.includes(name) || localized.includes(name) || (!zfcp && name.match(/zfcp/)) || (!dasd && name.match(/dasd/))) {
+        if (
+          skip.includes(name) ||
+          localized.includes(name) ||
+          (!zfcp && name.match(/zfcp/)) ||
+          (!dasd && name.match(/dasd/))
+        ) {
           warn(`Skipping ${name}`);
         } else {
           await apiDownload(url, name, token, data);
