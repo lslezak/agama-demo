@@ -171,7 +171,21 @@ const skip = [
   "/api/storage/product/volume_for",
 ];
 
+// extra paths missing in the OpenAPI data
+// FIXME: add the missing data
 const extra = ["/api/software/issues/product"];
+
+// these paths return localized data (i.e. depending on the current UI language)
+// TODO: add some flag to the OpenAPI data to avoid this hard coded list?
+const localized = [
+  "/api/l10n/keymaps",
+  "/api/l10n/locales",
+  "/api/l10n/timezones",
+  "/api/software/patterns",
+  "/api/software/products",
+  "/api/storage/devices/result",
+  "/api/storage/proposal/actions",
+];
 
 async function supported(url: string, storage: string, token: string, data: any): Promise<boolean> {
   const path = `/api/storage/${storage}/supported`;
@@ -180,17 +194,82 @@ async function supported(url: string, storage: string, token: string, data: any)
   return supported;
 }
 
-async function download(url: string, path: string, token: string, data: any) {
+async function apiDownload(
+  url: string,
+  path: string,
+  token: string,
+  data: any,
+  language: string | undefined = undefined
+) {
   warn(`Downloading ${path}`);
   // remove trailing slash from path
   const requestPath = path.replace(/\/$/, "");
   const res = await api(url + requestPath, token);
-  data[requestPath] = res;
+
+  if (language) {
+    if (!data[language]) {
+      data[language] = {};
+    }
+    data[language][requestPath] = res;
+  } else {
+    data[requestPath] = res;
+  }
 }
 
 async function extraPaths(data: any, url: string, token: string) {
   for (const idx in extra) {
-    await download(url, extra[idx], token, data);
+    await apiDownload(url, extra[idx], token, data);
+  }
+}
+
+async function switchLanguage(url: string, token: string, language: string) {
+  const downloader = url.startsWith("https://") ? https : http;
+  const options = {
+    // ignore HTTPS errors (self-signed certificate)
+    rejectUnauthorized: false,
+    headers: {
+      "Content-Type": "application/json",
+      authorization: "Bearer " + token,
+    },
+    method: "PATCH",
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = downloader.request(url + "/api/l10n/config", options, (res) => {
+      res.on("data", () => {});
+      res.on("end", () => {
+        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          reject("Changing language failed");
+        } else {
+          resolve(null);
+        }
+      });
+    });
+    req.on("error", (e) => {
+      reject(e.message);
+    });
+
+    // write request body
+    const body = JSON.stringify({ uiLocale: language });
+    req.write(body);
+    req.end();
+  });
+}
+
+async function localizedPaths(data: any, url: string, token: string) {
+  const path = "/languages.json";
+  warn(`Downloading ${path}`);
+  const languages = await api(url + path, token);
+
+  for (const language in languages) {
+    const [lang, country] = language.split("-", 2);
+    const uiLanguage = lang + "_" + country + ".UTF-8";
+    warn("Switching UI language to " + uiLanguage);
+    await switchLanguage(url, token, uiLanguage);
+
+    for (const idx in localized) {
+      await apiDownload(url, localized[idx], token, data, language);
+    }
   }
 }
 
@@ -209,10 +288,10 @@ async function readOpenAPI(dir: string, url: string, password: string) {
     const paths = apiData.paths || {};
     for (const name in paths) {
       if (paths[name].get) {
-        if (skip.includes(name) || (!zfcp && name.match(/zfcp/)) || (!dasd && name.match(/dasd/))) {
+        if (skip.includes(name) || localized.includes(name) || (!zfcp && name.match(/zfcp/)) || (!dasd && name.match(/dasd/))) {
           warn(`Skipping ${name}`);
         } else {
-          await download(url, name, token, data);
+          await apiDownload(url, name, token, data);
         }
       }
     }
@@ -220,6 +299,7 @@ async function readOpenAPI(dir: string, url: string, password: string) {
 
   await specialPaths(data, url, token);
   await extraPaths(data, url, token);
+  await localizedPaths(data, url, token);
 
   // pretty print with 2 spaces indentation
   const result = JSON.stringify(data, null, 2);
