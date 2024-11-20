@@ -1,7 +1,7 @@
 {
   "name": "agama-dumper",
   "version": "0.0.1",
-  "description": "Dumping the Agama REST API data",
+  "description": "Tool for dumping the Agama REST API data",
   "private": true,
   "license": "GPLv2",
   "scripts": {

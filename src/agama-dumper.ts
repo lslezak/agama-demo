@@ -154,7 +154,7 @@ async function specialPaths(data: any, url: string, token: string) {
 
 function sanityCheck(data: any) {
   const config = data["/api/software/config"];
-  if (!config.product) {
+  if (!config || !config.product) {
     warn(
       "WARNING: No product is selected, some settings (storage, software) depend on selected product."
     );
@@ -171,6 +171,8 @@ const skip = [
   "/api/storage/product/volume_for",
 ];
 
+const extra = ["/api/software/issues/product"];
+
 async function supported(url: string, storage: string, token: string, data: any): Promise<boolean> {
   const path = `/api/storage/${storage}/supported`;
   const supported = await api(url + path, token);
@@ -178,10 +180,24 @@ async function supported(url: string, storage: string, token: string, data: any)
   return supported;
 }
 
+async function download(url: string, path: string, token: string, data: any) {
+  warn(`Downloading ${path}`);
+  // remove trailing slash from path
+  const requestPath = path.replace(/\/$/, "");
+  const res = await api(url + requestPath, token);
+  data[requestPath] = res;
+}
+
+async function extraPaths(data: any, url: string, token: string) {
+  for (const idx in extra) {
+    await download(url, extra[idx], token, data);
+  }
+}
+
 async function readOpenAPI(dir: string, url: string, password: string) {
   const token = await login(url, password);
   const files = globSync("*.json", { cwd: dir });
-  const data: any = {};
+  let data: any = {};
 
   // check if ZFCP and DASD devices are supported (S390 mainframe only)
   const zfcp = await supported(url, "zfcp", token, data);
@@ -196,15 +212,14 @@ async function readOpenAPI(dir: string, url: string, password: string) {
         if (skip.includes(name) || (!zfcp && name.match(/zfcp/)) || (!dasd && name.match(/dasd/))) {
           warn(`Skipping ${name}`);
         } else {
-          warn(`Downloading ${name}`);
-          const res = await api(url + name.replace(/\/$/, ""), token);
-          data[name] = res;
+          await download(url, name, token, data);
         }
       }
     }
   }
 
   await specialPaths(data, url, token);
+  await extraPaths(data, url, token);
 
   // pretty print with 2 spaces indentation
   const result = JSON.stringify(data, null, 2);
