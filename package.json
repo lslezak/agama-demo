@@ -1,5 +1,5 @@
 {
-  "name": "agama-dump",
+  "name": "agama-dumper",
   "version": "0.0.1",
   "description": "Dumping the Agama REST API data",
   "private": true,
@@ -14,7 +14,7 @@
     "dist"
   ],
   "bin": {
-    "agama-dump": "./dist/agama-dump.js",
+    "agama-dumper": "./dist/agama-dumper.js",
     "agama-vm": "./dist/agama-vm.js"
   },
   "devDependencies": {
